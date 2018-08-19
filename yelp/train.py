@@ -1,19 +1,19 @@
 import argparse
 import json
+import math
 import os
 import random
 import shutil
-import sys
 import time
 
-import math
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from models import Seq2Seq2Decoder, Seq2Seq, MLP_D, MLP_G, MLP_Classify
 from torch.autograd import Variable
+
+from models import Seq2Seq2Decoder, MLP_D, MLP_G, MLP_Classify
 from utils import to_gpu, Corpus, batchify
 
 parser = argparse.ArgumentParser(description='ARAE for Yelp transfer')
@@ -144,8 +144,8 @@ label_ids = {"pos": 1, "neg": 0}
 id2label = {1: "pos", 0: "neg"}
 
 # (Path to textfile, Name, Use4Vocab)
-datafiles = [(os.path.join(args.data_path, "valid1.txt"), "valid1", False),
-             (os.path.join(args.data_path, "valid2.txt"), "valid2", False),
+datafiles = [(os.path.join(args.data_path, "test1.txt"), "test1", False),
+             (os.path.join(args.data_path, "test2.txt"), "test2", False),
              (os.path.join(args.data_path, "train1.txt"), "train1", True),
              (os.path.join(args.data_path, "train2.txt"), "train2", True)]
 vocabdict = None
@@ -173,8 +173,8 @@ with open("{}/log.txt".format(args.outf), 'w') as f:
     f.write("\n\n")
 
 eval_batch_size = 100
-test1_data = batchify(corpus.data['valid1'], eval_batch_size, shuffle=False)
-test2_data = batchify(corpus.data['valid2'], eval_batch_size, shuffle=False)
+test1_data = batchify(corpus.data['test1'], eval_batch_size, shuffle=False)
+test2_data = batchify(corpus.data['test2'], eval_batch_size, shuffle=False)
 train1_data = batchify(corpus.data['train1'], args.batch_size, shuffle=True)
 train2_data = batchify(corpus.data['train2'], args.batch_size, shuffle=True)
 
@@ -340,7 +340,7 @@ def evaluate_autoencoder(whichdecoder, data_source, epoch):
 
         aeoutf_from = "{}/{}_output_decoder_{}_from.txt".format(args.outf, epoch, whichdecoder)
         aeoutf_tran = "{}/{}_output_decoder_{}_tran.txt".format(args.outf, epoch, whichdecoder)
-        with open(aeoutf_from, 'w') as f_from, open(aeoutf_tran, 'w') as f_trans:
+        with open(aeoutf_from, 'a+') as f_from, open(aeoutf_tran, 'a+') as f_trans:
             max_indices1 = \
                 max_indices1.view(output.size(0), -1).data.cpu().numpy()
             max_indices2 = \
@@ -462,6 +462,8 @@ def calc_gradient_penalty(netD, real_data, fake_data):
     alpha = torch.rand(bsz, 1)
     alpha = alpha.expand(bsz, real_data.size(1))  # only works for 2D XXX
     alpha = alpha.cuda()
+
+    fake_data = fake_data[:real_data.size()[0]]
     interpolates = alpha * real_data + ((1 - alpha) * fake_data)
     interpolates = Variable(interpolates, requires_grad=True)
     disc_interpolates = netD(interpolates)
@@ -545,7 +547,7 @@ niter_gan = 1
 fixed_noise = to_gpu(args.cuda,
                      Variable(torch.ones(args.batch_size, args.z_size)))
 fixed_noise.data.normal_(0, 1)
-one = to_gpu(args.cuda, torch.FloatTensor([1]))
+one = to_gpu(args.cuda, torch.tensor(1.0))
 mone = one * -1
 
 for epoch in range(1, args.epochs + 1):

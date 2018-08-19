@@ -6,7 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from torch.nn._functions.packing import PackPadded
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, PackedSequence
 from utils import to_gpu
 
 
@@ -155,9 +156,8 @@ class Seq2Seq2Decoder(nn.Module):
 
     def encode(self, indices, lengths, noise):
         embeddings = self.embedding(indices)
-        packed_embeddings = pack_padded_sequence(input=embeddings,
-                                                 lengths=lengths,
-                                                 batch_first=True)
+        data, batch_sizes = PackPadded.apply(embeddings, torch.cuda.IntTensor(lengths), True)
+        packed_embeddings = PackedSequence(data, batch_sizes)
 
         # Encode
         packed_output, state = self.encoder(packed_embeddings)
@@ -175,7 +175,7 @@ class Seq2Seq2Decoder(nn.Module):
         # hidden = torch.div(hidden, norms.unsqueeze(1).expand_as(hidden))
 
         if noise and self.noise_r > 0:
-            gauss_noise = torch.normal(means=torch.zeros(hidden.size()),
+            gauss_noise = torch.normal(mean=torch.zeros(hidden.size()),
                                        std=self.noise_r)
             hidden = hidden + to_gpu(self.gpu, Variable(gauss_noise))
 
@@ -197,9 +197,8 @@ class Seq2Seq2Decoder(nn.Module):
             embeddings = self.embedding_decoder2(indices)
 
         augmented_embeddings = torch.cat([embeddings, all_hidden], 2)
-        packed_embeddings = pack_padded_sequence(input=augmented_embeddings,
-                                                 lengths=lengths,
-                                                 batch_first=True)
+        data, batch_sizes = PackPadded.apply(augmented_embeddings, torch.cuda.IntTensor(lengths), True)
+        packed_embeddings = PackedSequence(data, batch_sizes)
 
         if whichdecoder == 1:
             packed_output, state = self.decoder1(packed_embeddings, state)

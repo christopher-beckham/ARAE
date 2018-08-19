@@ -132,12 +132,14 @@ def batchify(data, bsz, shuffle=False, gpu=False):
     if shuffle:
         random.shuffle(data)
 
-    nbatch = len(data) // bsz
+    nbatch = (len(data) // bsz) + 1
     batches = []
 
     for i in range(nbatch):
         # Pad batches to maximum sequence length in batch
-        batch = data[i * bsz:(i + 1) * bsz]
+        start = i * bsz
+        end = min((i + 1) * bsz, len(data))
+        batch = data[start:end]
 
         # subtract 1 from lengths b/c includes BOTH starts & end symbols
         words = batch
