@@ -9,6 +9,9 @@ import json
 import os
 import numpy as np
 
+from torch.nn._functions.packing import PackPadded
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, PackedSequence
+
 
 class MLP_D(nn.Module):
     def __init__(self, ninput, noutput, layers,
@@ -186,16 +189,16 @@ class Seq2Seq(nn.Module):
 
     def encode(self, indices, lengths, noise): 
         embeddings = self.embedding(indices)
-        packed_embeddings = pack_padded_sequence(input=embeddings,
-                                                 lengths=lengths,
-                                                 batch_first=True)
+
+        data, batch_sizes = PackPadded.apply(embeddings, torch.cuda.IntTensor(lengths), True)
+        packed_embeddings = PackedSequence(data, batch_sizes)
 
         packed_output, state = self.encoder(packed_embeddings)
         hidden = state[0][-1]
         hidden = hidden / torch.norm(hidden, p=2, dim=1, keepdim=True)
         
         if noise and self.noise_r > 0:
-            gauss_noise = torch.normal(means=torch.zeros(hidden.size()),
+            gauss_noise = torch.normal(mean=torch.zeros(hidden.size()),
                                        std=self.noise_r)
             hidden = hidden + Variable(gauss_noise.cuda())
 
@@ -213,9 +216,8 @@ class Seq2Seq(nn.Module):
 
         embeddings = self.embedding_decoder(indices)
         augmented_embeddings = torch.cat([embeddings, all_hidden], 2)
-        packed_embeddings = pack_padded_sequence(input=augmented_embeddings,
-                                                 lengths=lengths,
-                                                 batch_first=True)
+        data, batch_sizes = PackPadded.apply(augmented_embeddings, torch.cuda.IntTensor(lengths), True)
+        packed_embeddings = PackedSequence(data, batch_sizes)
 
         packed_output, state = self.decoder(packed_embeddings, state)
         output, lengths = pad_packed_sequence(packed_output, batch_first=True)
